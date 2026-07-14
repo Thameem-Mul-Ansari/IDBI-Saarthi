@@ -8,8 +8,7 @@ IDBI Saarthi is an AI-powered digital wealth companion designed to democratize f
 ---
 
 ## 🚀 Quick Links
-* **Prototype Video:** [Insert Video Link Here] 
-* **Download App (APK):** [Insert APK File Link Here] 
+* **Prototype Video:** [IDBI_Saarthi_POC_Video_Link](https://drive.google.com/drive/folders/1oVmIbf0paiDCUS1mRqng3tZR-jL2Zx3v) 
 * **GitHub Repository:** [Thameem-Mul-Ansari/IDBI-Saarthi](https://github.com/Thameem-Mul-Ansari/IDBI-Saarthi) 
 
 ---
@@ -66,5 +65,5 @@ Our platform is built on an enterprise-grade, compliance-native design utilizing
 
 ### 1. Clone the Repository
 ```bash
-git clone [https://github.com/Thameem-Mul-Ansari/IDBI-Saarthi.git](https://github.com/Thameem-Mul-Ansari/IDBI-Saarthi.git)
+git clone https://github.com/Thameem-Mul-Ansari/IDBI-Saarthi.git
 cd IDBI-Saarthi
