@@ -28,31 +28,31 @@ Traditional wealth management is often inaccessible to everyday investors. IDBI 
 
 ### 💼 For the Relationship Manager (RM)
 * **RM Smart Lead Briefing:** Auto-generated lead summaries and escalation logic for high-value or complex queries.
-* **Self-Updating Knowledge Base:** Admin dashboard to manage and control AI knowledge[cite: 3].
-* **Personalized Live Market Pulse:** Real-time market context for better client conversations[cite: 3].
+* **Self-Updating Knowledge Base:** Admin dashboard to manage and control AI knowledge.
+* **Personalized Live Market Pulse:** Real-time market context for better client conversations.
 
 ---
 
 ## 🛠️ Architecture & Tech Stack
 
-Our platform is built on an enterprise-grade, compliance-native design utilizing bank-grade security (End-to-End Encryption, RBI/SEBI/ISO 27001/DPDP Act Compliant)[cite: 3].
+Our platform is built on an enterprise-grade, compliance-native design utilizing bank-grade security (End-to-End Encryption, RBI/SEBI/ISO 27001/DPDP Act Compliant).
 
 **1. Channel Layer**
-* Frontend: **Flutter** (Mobile App with In-App AI Avatar)[cite: 3]
-* Dashboard: **RM Web Dashboard**[cite: 3]
+* Frontend: **Flutter** (Mobile App with In-App AI Avatar)
+* Dashboard: **RM Web Dashboard**
 
 **2. Orchestration & Backend**
-* Framework: **FastAPI**[cite: 3]
-* AI Orchestration: **LangChain**[cite: 3]
+* Framework: **FastAPI**
+* AI Orchestration: **LangChain**
 
 **3. AI & Knowledge Layer**
-* Reasoning Engine: **Azure OpenAI (GPT-4o & GPT-4o mini** for tiered routing)[cite: 3]
-* Voice/Vision: **Azure AI Speech** & **Azure AI Avatar** (Text-to-Speech Avatar)[cite: 3]
-* Vector Search: **Azure AI Search**[cite: 3]
+* Reasoning Engine: **Azure OpenAI (GPT-4o & GPT-4o mini** for tiered routing)
+* Voice/Vision: **Azure AI Speech** & **Azure AI Avatar** (Text-to-Speech Avatar)
+* Vector Search: **Azure AI Search**
 
 **4. Data & Storage Layer**
-* Databases: **Azure Cosmos DB** (NoSQL) & **Azure Blob Storage** (Document Storage)[cite: 3]
-* RAG Sources: **IDBI Product Catalog, AMFI, SEBI, RBI, NewsAPI** (Live Market Feeds)[cite: 3]
+* Databases: **Azure Cosmos DB** (NoSQL) & **Azure Blob Storage** (Document Storage)
+* RAG Sources: **IDBI Product Catalog, AMFI, SEBI, RBI, NewsAPI** (Live Market Feeds)
 
 ---
 
