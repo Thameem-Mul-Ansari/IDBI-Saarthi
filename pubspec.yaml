@@ -1,0 +1,42 @@
+name: idbi_saarthi
+description: "An Intelligent Virtual Assistant for Digital Wealth"
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  permission_handler: ^11.3.1
+
+  cupertino_icons: ^1.0.8
+  flutter_dotenv: ^6.0.1
+  flutter_inappwebview: ^6.1.5
+  flutter_launcher_icons: ^0.13.1
+  http: ^1.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+
+  uses-material-design: true
+
+  assets:
+    - .env
+    - assets/avatar_webview.html
+    - assets/idbi_logo.png
+
+# Add this entire block at the bottom of pubspec.yaml
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#008080"

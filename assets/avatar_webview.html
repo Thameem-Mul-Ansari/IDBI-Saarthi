@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Azure Avatar Assistant</title>
+    <script src="https://aka.ms/csspeech/jsbrowserpackageraw"></script>
+    <style>
+        html, body {
+          margin: 0; padding: 0; width: 100%; height: 100%;
+          background: transparent; overflow: hidden;
+        }
+        #videoContainer {
+          width: 100%; height: 100%; display: flex;
+          align-items: center; justify-content: center; background: transparent;
+        }
+    </style>
+</head>
+<body>
+<div id="videoContainer"></div>
+
+<script>
+    let peerConnection = null;
+    let avatarSynthesizer = null;
+    let speechRecognizer = null;
+    let isRecognizing = false;
+    let recognitionTimeout = null;
+    let isSpeaking = false;
+
+    function notifyFlutter(handler, data) {
+      if (window.flutter_inappwebview) {
+        window.flutter_inappwebview.callHandler(handler, data);
+      }
+    }
+
+    async function fetchIceServerInfo(region, subscriptionKey) {
+      const url = `https://${region}.tts.speech.microsoft.com/cognitiveservices/avatar/relay/token/v1`;
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: { 'Ocp-Apim-Subscription-Key': subscriptionKey }
+      });
+      if (!resp.ok) throw new Error('ICE token request failed: ' + resp.status);
+      const json = await resp.json();
+      return {
+        urls: json.Urls || json.urls,
+        username: json.Username || json.username,
+        credential: json.Password || json.credential
+      };
+    }
+
+    window.initAvatar = async function (region, subscriptionKey, character, style, voiceName) {
+      try {
+        notifyFlutter('avatarStatus', 'connecting');
+        const ice = await fetchIceServerInfo(region, subscriptionKey);
+
+        peerConnection = new RTCPeerConnection({
+          iceServers: [{ urls: ice.urls, username: ice.username, credential: ice.credential }]
+        });
+
+        peerConnection.ontrack = function (event) {
+          const container = document.getElementById('videoContainer');
+          if (event.track.kind === 'video') {
+            notifyFlutter('avatarEvent', 'Video track received');
+            let videoEl = document.getElementById('avatarVideo');
+            if (!videoEl) {
+              videoEl = document.createElement('video');
+              videoEl.id = 'avatarVideo';
+              videoEl.setAttribute('autoplay', 'autoplay');
+              videoEl.setAttribute('playsinline', 'playsinline');
+              videoEl.setAttribute('muted', 'muted');
+              videoEl.muted = true;
+              videoEl.style.width = '100%';
+              videoEl.style.height = '100%';
+              videoEl.style.objectFit = 'cover';
+
+              videoEl.addEventListener('loadeddata', () => {
+                videoEl.play().catch(e => notifyFlutter('speakError', 'Video play failed: ' + e));
+              });
+
+              videoEl.onplaying = () => {
+                notifyFlutter('avatarEvent', 'Video is now playing');
+                if (!container.contains(videoEl)) container.appendChild(videoEl);
+              };
+            }
+            videoEl.srcObject = event.streams[0];
+          } else if (event.track.kind === 'audio') {
+            notifyFlutter('avatarEvent', 'Audio track received');
+            let audioEl = document.getElementById('avatarAudio');
+            if (!audioEl) {
+              audioEl = document.createElement('audio');
+              audioEl.id = 'avatarAudio';
+              audioEl.setAttribute('autoplay', 'autoplay');
+              audioEl.addEventListener('loadeddata', () => {
+                audioEl.play().catch(e => notifyFlutter('speakError', 'Audio play failed: ' + e));
+              });
+              audioEl.onplaying = () => {
+                if (!container.contains(audioEl)) container.appendChild(audioEl);
+              };
+            }
+            audioEl.srcObject = event.streams[0];
+          }
+        };
+
+        peerConnection.oniceconnectionstatechange = function () {
+          if (peerConnection.iceConnectionState === 'failed' || peerConnection.iceConnectionState === 'disconnected') {
+            notifyFlutter('avatarStatus', 'error:connection lost');
+          }
+        };
+
+        peerConnection.addTransceiver('video', { direction: 'sendrecv' });
+        peerConnection.addTransceiver('audio', { direction: 'sendrecv' });
+
+        const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(subscriptionKey, region);
+        speechConfig.speechSynthesisVoiceName = voiceName;
+        const avatarConfig = new SpeechSDK.AvatarConfig(character, style);
+
+        avatarSynthesizer = new SpeechSDK.AvatarSynthesizer(speechConfig, avatarConfig);
+        avatarSynthesizer.avatarEventReceived = function (s, e) {
+          notifyFlutter('avatarEvent', e.description || '');
+        };
+
+        await avatarSynthesizer.startAvatarAsync(peerConnection);
+        notifyFlutter('avatarStatus', 'ready');
+      } catch (err) {
+        notifyFlutter('avatarStatus', 'error:' + (err && err.message ? err.message : err));
+      }
+    };
+
+    window.speak = async function (text) {
+      if (!avatarSynthesizer) return;
+      try {
+        isSpeaking = true;
+        notifyFlutter('speakingStateChanged', 'speaking');
+        await avatarSynthesizer.speakTextAsync(text);
+        isSpeaking = false;
+        notifyFlutter('speakingStateChanged', 'idle');
+      } catch (err) {
+        isSpeaking = false;
+        notifyFlutter('speakingStateChanged', 'idle');
+      }
+    };
+
+    window.stopSpeaking = async function () {
+      if (avatarSynthesizer) {
+        try { await avatarSynthesizer.stopSpeakingAsync(); } catch (e) {}
+        isSpeaking = false;
+        notifyFlutter('speakingStateChanged', 'idle');
+      }
+    };
+
+    // Continuous recognition with silence timeout
+    window.startRecognition = async function (region, subscriptionKey, localesString) {
+      try {
+        if (speechRecognizer) {
+          try {
+            speechRecognizer.stopContinuousRecognitionAsync();
+          } catch (e) {}
+          speechRecognizer.close();
+          speechRecognizer = null;
+        }
+        isRecognizing = false;
+
+        try {
+          const testStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          testStream.getTracks().forEach(t => t.stop());
+        } catch (micErr) {
+          notifyFlutter('speakError', 'Microphone permission/access error: ' + (micErr && micErr.message ? micErr.message : micErr));
+          notifyFlutter('sttStatus', 'idle');
+          return;
+        }
+
+        const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(subscriptionKey, region);
+        const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+
+        const locales = localesString.split(',').map(l => l.trim()).filter(l => l.length > 0);
+
+        if (locales.length > 1) {
+            const autoDetectConfig = SpeechSDK.AutoDetectSourceLanguageConfig.fromLanguages(locales);
+            speechRecognizer = SpeechSDK.SpeechRecognizer.FromConfig(speechConfig, autoDetectConfig, audioConfig);
+        } else {
+            speechConfig.speechRecognitionLanguage = locales[0] || 'en-US';
+            speechRecognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+        }
+
+        // UPDATED: Set recognition timeout (silence detection) to 6000ms
+        const silenceTimeout = 6000;
+
+        let recognizedText = '';
+        let silenceTimer = null;
+        let isFinalResultReceived = false;
+
+        const resetSilenceTimer = () => {
+          if (silenceTimer) {
+            clearTimeout(silenceTimer);
+            silenceTimer = null;
+          }
+          silenceTimer = setTimeout(() => {
+            if (speechRecognizer && isRecognizing) {
+              console.log('Silence detected, stopping recognition');
+              speechRecognizer.stopContinuousRecognitionAsync();
+            }
+          }, silenceTimeout);
+        };
+
+        speechRecognizer.recognizing = function (s, e) {
+          if (e.result.text && e.result.text.length > 0) {
+            notifyFlutter('sttInterim', e.result.text);
+          }
+          resetSilenceTimer();
+        };
+
+        speechRecognizer.recognized = function (s, e) {
+          if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+            recognizedText = e.result.text;
+            isFinalResultReceived = true;
+            resetSilenceTimer();
+          } else if (e.result.reason === SpeechSDK.ResultReason.NoMatch) {
+            console.log('No speech recognized');
+          }
+        };
+
+        speechRecognizer.canceled = function (s, e) {
+          console.log('Recognition canceled:', e.reason, e.errorDetails);
+          if (e.reason === SpeechSDK.CancellationReason.Error) {
+            notifyFlutter('speakError', 'STT Canceled: ' + (e.errorDetails || 'unknown error'));
+          }
+          if (window._cleanupRecognition) {
+            window._cleanupRecognition();
+          }
+        };
+
+        speechRecognizer.sessionStopped = function (s, e) {
+          console.log('Session stopped');
+          if (window._cleanupRecognition) {
+            window._cleanupRecognition();
+          }
+        };
+
+        isRecognizing = true;
+        notifyFlutter('sttStatus', 'listening');
+
+        speechRecognizer.startContinuousRecognitionAsync(
+          function() {
+            console.log('Continuous recognition started');
+            resetSilenceTimer();
+          },
+          function(err) {
+            console.error('Error starting continuous recognition:', err);
+            notifyFlutter('speakError', 'STT Start Error: ' + err);
+            notifyFlutter('sttStatus', 'idle');
+            isRecognizing = false;
+            if (speechRecognizer) {
+              speechRecognizer.close();
+              speechRecognizer = null;
+            }
+          }
+        );
+
+        let cleanupRan = false;
+        window._cleanupRecognition = function() {
+          if (cleanupRan) return;
+          cleanupRan = true;
+
+          if (silenceTimer) {
+            clearTimeout(silenceTimer);
+            silenceTimer = null;
+          }
+          if (speechRecognizer) {
+            const recognizerToClose = speechRecognizer;
+            speechRecognizer = null;
+            try { recognizerToClose.stopContinuousRecognitionAsync(() => recognizerToClose.close(), () => recognizerToClose.close()); }
+            catch (e) { try { recognizerToClose.close(); } catch (e2) {} }
+          }
+          isRecognizing = false;
+          notifyFlutter('sttStatus', 'idle');
+
+          if (recognizedText && recognizedText.trim().length > 0) {
+            notifyFlutter('sttResult', recognizedText);
+            recognizedText = '';
+          }
+          isFinalResultReceived = false;
+        };
+
+      } catch (err) {
+        notifyFlutter('speakError', 'STT Exception: ' + err.message);
+        notifyFlutter('sttStatus', 'idle');
+        isRecognizing = false;
+        if (speechRecognizer) {
+          speechRecognizer.close();
+          speechRecognizer = null;
+        }
+      }
+    };
+
+    window.stopRecognition = function () {
+      if (window._cleanupRecognition) {
+        window._cleanupRecognition();
+      } else if (speechRecognizer) {
+        try {
+          speechRecognizer.stopContinuousRecognitionAsync();
+        } catch (e) {}
+        speechRecognizer.close();
+        speechRecognizer = null;
+        isRecognizing = false;
+        notifyFlutter('sttStatus', 'idle');
+      }
+    };
+
+    window.closeAvatarSession = async function () {
+      try {
+        if (window._cleanupRecognition) {
+          window._cleanupRecognition();
+        } else {
+          window.stopRecognition();
+        }
+
+        if (avatarSynthesizer) {
+          await avatarSynthesizer.stopAvatarAsync();
+          avatarSynthesizer = null;
+        }
+      } catch (e) {}
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+    };
+</script>
+</body>
+</html>
